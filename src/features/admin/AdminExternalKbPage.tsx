@@ -367,7 +367,7 @@ export function AdminExternalKbPage() {
                 </Field>
                 <Field
                   label="API Key Secret Referansı"
-                  hint="Environment secret değişken adı (raw secret DEĞİL). ör. EXTERNAL_KB_API_KEY"
+                  hint="API anahtarı değeri burada saklanmaz. Sadece ortam değişkeni adı saklanır. Örn: EXTERNAL_KB_API_KEY"
                   error={errors.apiKeySecretName}
                 >
                   <TextInput
