@@ -60,6 +60,7 @@ SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 CRON_SECRET=
 OPENAI_API_KEY=
+EXTERNAL_KB_API_KEY=
 ```
 
 | Degisken | Kullanim |
@@ -70,6 +71,7 @@ OPENAI_API_KEY=
 | `SUPABASE_SERVICE_ROLE_KEY` | Backend auth dogrulama ve storage islemleri |
 | `CRON_SECRET` | Cron endpointlerini koruyan secret |
 | `OPENAI_API_KEY` | AI endpointleri icin OpenAI key |
+| `EXTERNAL_KB_API_KEY` | External Knowledge Base / EnRoute API key (yalniz BFF okur; raw deger DB'de tutulmaz). Bu env yoksa Bilgi Bankasi calismaz: `external_kb_secret_missing`. |
 
 ### Frontend
 
@@ -210,8 +212,41 @@ Vite static build -> dist/ -> Vercel CDN
 - `VITE_SUPABASE_ANON_KEY` tanimli
 - `CRON_SECRET` guclu rastgele deger
 - `OPENAI_API_KEY` AI ozellikleri gerekiyorsa tanimli
+- `EXTERNAL_KB_API_KEY` Bilgi Bankasi entegrasyonu aktifse tanimli (bkz. "External KB deployment secret")
 - Supabase Auth redirect/origin ayarlari production domain'i iceriyor
 - Supabase Storage bucket ve policy ayarlari upload/download akisina uygun
+
+### External KB deployment secret
+
+Varuna Admin ekrani (Yonetim Paneli -> Bilgi Bankasi Entegrasyonu) yalniz
+**environment degisken adini** saklar:
+
+```
+apiKeySecretName = EXTERNAL_KB_API_KEY
+```
+
+Gercek secret degeri deployment ortaminda tanimlanmalidir. DB'ye veya
+frontend'e raw secret hicbir zaman gitmez; BFF `process.env[apiKeySecretName]`
+ile yalniz outbound external API cagrisi sirasinda okur.
+
+**Vercel:**
+
+- **Name:** `EXTERNAL_KB_API_KEY`
+- **Value:** `<external KB API key>` (gercek deger Vercel UI'sina elle girilir; bu repository'de yer almaz)
+- **Environment:** Production, Preview, Development
+
+**Onemli:** Vercel'de bu environment variable eklendikten veya degistirildikten
+sonra **manuel redeploy** gereklidir. Vercel mevcut deployment'lari env degisikligi
+sonrasinda otomatik yeniden baslatmaz.
+
+**Guvenlik:**
+
+- Anahtar chat / log / screenshot / dokumanda paylasildiysa production'a almadan
+  once rotate edin.
+- Raw key bu repository'de hicbir dosyaya commit edilmez (yalniz placeholder
+  veya environment referans adi gecer). Pre-commit veya CI tarafi gerekirse
+  saglayicinin kullandigi prefix uzerinden `git grep -n "<provider-prefix>"`
+  drift kontrolu yapabilir.
 
 ### Production Deploy Checklist
 
