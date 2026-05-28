@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRightLeft, Bot, Check, Pencil, Sparkles } from 'lucide-react';
+import { ArrowRightLeft, Bot, Building2, Check, Pencil, Sparkles, User } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Field, Select, TextArea } from '@/components/ui/Field';
@@ -239,6 +239,41 @@ export function TransferModal({ open, caseItem, onClose, onTransferred }: Transf
         />
       ) : (
         <div className="space-y-4">
+          {/* Current assignment context — single source of "from / to"
+              truth for the operator. Pulls from caseItem only; no extra
+              fetch. */}
+          <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5 dark:border-ndark-border dark:bg-ndark-card">
+            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 dark:text-ndark-muted">
+              Mevcut Atama
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-700 dark:text-ndark-text">
+              <span className="inline-flex items-center gap-1.5">
+                <Building2 size={12} className="text-slate-400" />
+                <span className="text-slate-500">Takım:</span>
+                <span className="font-medium">
+                  {caseItem.assignedTeamName ?? 'Atanmamış'}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <User size={12} className="text-slate-400" />
+                <span className="text-slate-500">Kişi:</span>
+                <span className="font-medium">
+                  {caseItem.assignedPersonName ?? 'Atanmamış'}
+                </span>
+              </span>
+              {(caseItem.transferCount ?? 0) > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] text-slate-600 dark:bg-ndark-bg dark:text-ndark-muted">
+                  Daha önce {caseItem.transferCount} aktarım
+                </span>
+              )}
+              {caseItem.escalationLevel && caseItem.escalationLevel !== 'Yok' && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                  Eskalasyon: {caseItem.escalationLevel}
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* Geçmiş — transferCount > 0 ise */}
           {history.length > 0 && (
             <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-ndark-border dark:bg-ndark-card/40">
@@ -320,6 +355,56 @@ export function TransferModal({ open, caseItem, onClose, onTransferred }: Transf
               </div>
             )}
           </Field>
+
+          {/* Team-member preview — visible when a target team is chosen.
+              Helps the operator confirm membership before committing.
+              Highlights the selected person; truncates if the team is
+              large. Does NOT change submit behavior. */}
+          {toTeamId && teamSelected && (
+            <div className="rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2 dark:border-ndark-border dark:bg-ndark-card/40">
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 dark:text-ndark-muted">
+                  {teamSelected.name} ekibi
+                </div>
+                <div className="text-[10.5px] tabular-nums text-slate-500 dark:text-ndark-muted">
+                  {personsForTeam.length} kişi
+                </div>
+              </div>
+              {personsForTeam.length === 0 ? (
+                <div className="mt-1 text-[11px] text-slate-500 dark:text-ndark-muted">
+                  Bu takıma atanmış kişi yok — vaka takıma genel atanacak.
+                </div>
+              ) : (
+                <ul className="mt-1.5 flex flex-wrap gap-1">
+                  {personsForTeam.slice(0, 10).map((p) => {
+                    const active = p.id === toPersonId;
+                    return (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onClick={() => setToPersonId(active ? '' : p.id)}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition ${
+                            active
+                              ? 'bg-brand-600 text-white ring-1 ring-brand-600'
+                              : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:ring-brand-300 dark:bg-ndark-bg dark:text-ndark-text dark:ring-ndark-border'
+                          }`}
+                          title={active ? 'Seçimi kaldır' : `Atanacak: ${p.name}`}
+                        >
+                          <User size={10} />
+                          {p.name}
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {personsForTeam.length > 10 && (
+                    <li className="text-[11px] text-slate-500 dark:text-ndark-muted">
+                      +{personsForTeam.length - 10} daha
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
 
           <Field label="Atanacak Kişi" hint="Boş bırakılırsa yalnız takım atanır.">
             <Select

@@ -158,6 +158,13 @@ export function CaseDetailPage({ caseId, onBack, onShowCustomer, onOpenAccount }
 
   // Status transition artık StatusTransitionPanel içinde (header popover kaldırıldı)
 
+  // RUNA AI supervisor analyze — lifted to parent so the OperationalOverviewBand
+  // (visible on all viewports) and the RightPanel (xl-only) share a SINGLE
+  // source of truth. Without this, a user on a wide screen could double-fire
+  // the supervisorSummary endpoint by clicking the band button and the right
+  // rail button simultaneously.
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+
   // New note state
   const [noteText, setNoteText] = useState('');
   const [noteVisibility, setNoteVisibility] = useState<NoteVisibility>('Internal');
@@ -459,6 +466,46 @@ export function CaseDetailPage({ caseId, onBack, onShowCustomer, onOpenAccount }
     item.snoozeUntil && new Date(item.snoozeUntil).getTime() > Date.now(),
   );
 
+  // RUNA AI supervisor analyze — single source of truth shared between
+  // OperationalOverviewBand and RightPanel. Identical request shape to the
+  // previous RightPanel-local handler; preserves toast/error UX.
+  async function handleAiAnalyze() {
+    if (!item || aiAnalyzing) return;
+    setAiAnalyzing(true);
+    const r = await aiService.supervisorSummary({
+      case: {
+        title: item.title,
+        description: item.description,
+        category: item.category,
+        subCategory: item.subCategory,
+        status: item.status,
+        priority: item.priority,
+        slaViolation: item.slaViolation,
+        slaResponseDueAt: item.slaResponseDueAt,
+        slaResolutionDueAt: item.slaResolutionDueAt,
+        slaPausedAt: item.slaPausedAt,
+        createdAt: item.createdAt,
+      },
+      history: item.history,
+      notes: item.notes,
+      callLogs: item.callLogs,
+    });
+    if (!r.ok) {
+      setAiAnalyzing(false);
+      toast({ type: 'warn', message: aiErrorMessage(r.error), duration: 2500 });
+      return;
+    }
+    const updated = await caseService.update(item.id, {
+      aiSummary: r.data.summary,
+      aiFollowupRecommendation: r.data.recommendation,
+    });
+    setAiAnalyzing(false);
+    if (updated) {
+      setItem(updated);
+      toast({ type: 'success', message: 'Vaka analizi tamamlandı.', duration: 2000 });
+    }
+  }
+
   async function handleUnsnooze() {
     if (!item) return;
     setUnsnoozing(true);
@@ -756,6 +803,15 @@ export function CaseDetailPage({ caseId, onBack, onShowCustomer, onOpenAccount }
 
         {/* Main */}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Operational overview band — visible on ALL viewports so the
+              user never depends on the xl-only right rail for current
+              state, ownership, SLA risk, or RUNA AI access. */}
+          <OperationalOverviewBand
+            item={item}
+            customerContext={customerContext}
+            aiAnalyzing={aiAnalyzing}
+            onAiAnalyze={handleAiAnalyze}
+          />
           <nav className="sticky top-0 z-10 flex shrink-0 gap-1 border-b border-slate-200 bg-white px-4 dark:border-ndark-border dark:bg-ndark-card">
             <TabButton
               active={tab === 'detail'}
@@ -850,11 +906,16 @@ export function CaseDetailPage({ caseId, onBack, onShowCustomer, onOpenAccount }
           </div>
         </main>
 
-        {/* Right panel — RUNA AI + type-specific summary (her vakada görünür) */}
+        {/* Right panel — RUNA AI + type-specific summary (xl+ only).
+            Below xl, the OperationalOverviewBand above the tabs exposes
+            RUNA AI + key signals so the main flow never depends solely
+            on the right rail. */}
         <RightPanel
           item={item}
           offeredSolutions={offeredSolutions}
           onCaseUpdated={(updated) => setItem(updated)}
+          aiAnalyzing={aiAnalyzing}
+          onAiAnalyze={handleAiAnalyze}
         />
 
       </div>
@@ -944,6 +1005,143 @@ function MenuAction({ label, onClick }: { label: string; onClick: () => void }) 
         {label}
       </button>
     </li>
+  );
+}
+
+/**
+ * OperationalOverviewBand — sits above the tabs on every viewport.
+ *
+ * Purpose: in <1 second the operator should see current state, who owns
+ * it, SLA pressure, escalation/churn signals, and RUNA AI access without
+ * needing the xl-only right rail.
+ *
+ * No business logic. Aggregates display data already on `item` /
+ * `customerContext`. RUNA Analyze button uses the SAME lifted handler
+ * (handleAiAnalyze) as the right rail — see CaseDetailPage doc.
+ */
+function OperationalOverviewBand({
+  item,
+  customerContext,
+  aiAnalyzing,
+  onAiAnalyze,
+}: {
+  item: Case;
+  customerContext: CaseCustomerContext | null;
+  aiAnalyzing: boolean;
+  onAiAnalyze: () => void;
+}) {
+  const escalationActive = item.escalationLevel && item.escalationLevel !== 'Yok';
+  const slaResolutionRel = item.slaResolutionDueAt
+    ? formatRelative(item.slaResolutionDueAt)
+    : null;
+
+  // Compact RUNA AI summary preview — 1-line clamp, full text on hover.
+  const aiPreview = item.aiSummary
+    ? item.aiSummary.length > 90
+      ? `${item.aiSummary.slice(0, 90)}…`
+      : item.aiSummary
+    : null;
+
+  return (
+    <section className="shrink-0 border-b border-slate-200 bg-slate-50/60 px-4 py-3 dark:border-ndark-border dark:bg-ndark-bg/30">
+      <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+        {/* Left cluster — state + ownership + signals */}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-1 ring-1 ring-slate-200 dark:bg-ndark-card dark:ring-ndark-border">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Statü
+            </span>
+            <StatusPill status={item.status} />
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-ndark-text">
+            <Building2 size={12} className="text-slate-400" />
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Takım
+            </span>
+            <span className="truncate max-w-[180px]" title={item.assignedTeamName ?? ''}>
+              {item.assignedTeamName ?? '—'}
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-ndark-text">
+            <User size={12} className="text-slate-400" />
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Atanan
+            </span>
+            <span className="truncate max-w-[180px]" title={item.assignedPersonName ?? ''}>
+              {item.assignedPersonName ?? 'Atanmamış'}
+            </span>
+          </span>
+          {item.slaViolation ? (
+            <Badge tint="rose" icon={<ShieldAlert size={11} />} className="text-[10.5px]">
+              SLA İhlali
+            </Badge>
+          ) : item.slaPausedAt ? (
+            <Badge tint="amber" className="text-[10.5px]">SLA Duraklatıldı</Badge>
+          ) : slaResolutionRel ? (
+            <Badge tint="slate" icon={<Clock size={11} />} className="text-[10.5px]">
+              SLA {slaResolutionRel}
+            </Badge>
+          ) : null}
+          {item.priority === 'Critical' && (
+            <Badge tint="rose" className="text-[10.5px]">Critical</Badge>
+          )}
+          {escalationActive && (
+            <Badge tint="amber" className="text-[10.5px]">
+              Eskalasyon: {ESCALATION_LEVEL_LABELS[item.escalationLevel]}
+            </Badge>
+          )}
+          {item.approvalState === 'Pending' && (
+            <Badge tint="violet" className="text-[10.5px]">Onay bekliyor</Badge>
+          )}
+          {item.approvalState === 'Rejected' && (
+            <Badge tint="rose" className="text-[10.5px]">Onay reddedildi</Badge>
+          )}
+          {customerContext && !customerContext.isActive && (
+            <Badge tint="slate" className="text-[10.5px]">Müşteri pasif</Badge>
+          )}
+        </div>
+
+        {/* Right cluster — RUNA AI compact entry */}
+        <div className="flex shrink-0 items-center gap-2">
+          {aiPreview ? (
+            <div className="flex min-w-0 items-center gap-2 rounded-md border border-violet-200 bg-violet-50/60 px-2.5 py-1.5 text-xs dark:border-violet-900/40 dark:bg-violet-950/20">
+              <Sparkles size={12} className="shrink-0 text-violet-600 dark:text-violet-300" />
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                  RUNA AI
+                </div>
+                <div
+                  className="truncate text-[11.5px] text-slate-800 dark:text-ndark-text"
+                  title={item.aiSummary ?? ''}
+                >
+                  {aiPreview}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onAiAnalyze}
+                disabled={aiAnalyzing}
+                title="Yeniden analiz başlat"
+              >
+                {aiAnalyzing ? '✦ Analiz ediyor…' : '✦ Yenile'}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<Sparkles size={12} />}
+              onClick={onAiAnalyze}
+              disabled={aiAnalyzing}
+              title="RUNA AI vaka analizi başlat"
+            >
+              {aiAnalyzing ? 'RUNA analiz ediyor…' : 'RUNA AI Analiz Et'}
+            </Button>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1340,13 +1538,19 @@ function RightPanel({
   item,
   offeredSolutions,
   onCaseUpdated,
+  aiAnalyzing,
+  onAiAnalyze,
 }: {
   item: Case;
   offeredSolutions: { id: string; name: string }[];
   onCaseUpdated: (updated: Case) => void;
+  /** Supervisor analyze state — lifted to CaseDetailPage so the
+   *  OperationalOverviewBand and this panel share a single source of
+   *  truth and cannot double-fire the supervisorSummary endpoint. */
+  aiAnalyzing: boolean;
+  onAiAnalyze: () => void;
 }) {
   const { toast } = useToast();
-  const [analyzing, setAnalyzing] = useState(false);
   const [churnAnalyzing, setChurnAnalyzing] = useState(false);
   const [churnResult, setChurnResult] = useState<ChurnConversion | null>(null);
   const [converting, setConverting] = useState(false);
@@ -1355,42 +1559,6 @@ function RightPanel({
   useEffect(() => {
     setChurnResult(null);
   }, [item.id]);
-
-  async function handleAnalyze() {
-    setAnalyzing(true);
-    const r = await aiService.supervisorSummary({
-      case: {
-        title: item.title,
-        description: item.description,
-        category: item.category,
-        subCategory: item.subCategory,
-        status: item.status,
-        priority: item.priority,
-        slaViolation: item.slaViolation,
-        slaResponseDueAt: item.slaResponseDueAt,
-        slaResolutionDueAt: item.slaResolutionDueAt,
-        slaPausedAt: item.slaPausedAt,
-        createdAt: item.createdAt,
-      },
-      history: item.history,
-      notes: item.notes,
-      callLogs: item.callLogs,
-    });
-    if (!r.ok) {
-      setAnalyzing(false);
-      toast({ type: 'warn', message: aiErrorMessage(r.error), duration: 2500 });
-      return;
-    }
-    const updated = await caseService.update(item.id, {
-      aiSummary: r.data.summary,
-      aiFollowupRecommendation: r.data.recommendation,
-    });
-    setAnalyzing(false);
-    if (updated) {
-      onCaseUpdated(updated);
-      toast({ type: 'success', message: 'Vaka analizi tamamlandı.', duration: 2000 });
-    }
-  }
 
   async function handleChurnAnalysis() {
     setChurnAnalyzing(true);
@@ -1431,17 +1599,17 @@ function RightPanel({
         <RunaAiCard
           title={item.aiSummary ? 'Vaka Özeti' : 'RUNA AI Hazır'}
           body={item.aiSummary ?? 'Bu vaka için henüz AI analizi yapılmadı.'}
-          isLoading={analyzing}
+          isLoading={aiAnalyzing}
           badges={
             item.aiConfidenceScore != null
               ? [`%${Math.round(item.aiConfidenceScore * 100)} güven`]
               : []
           }
           primaryAction={
-            !analyzing
+            !aiAnalyzing
               ? {
                   label: item.aiSummary ? '✦ Yeniden Analiz Et' : '✦ Analiz Et',
-                  onClick: () => void handleAnalyze(),
+                  onClick: onAiAnalyze,
                 }
               : undefined
           }
