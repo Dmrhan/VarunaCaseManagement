@@ -40,74 +40,89 @@ interface StatusTransitionPanelProps {
   onApplied: (updated: Case) => void;
 }
 
-// Spec 11.1 renk paletiyle uyumlu kart tonları
+// Spec 11.1 renk paletiyle uyumlu kart tonları. UX redesign sonrası bu meta
+// yolculuk node'larında, hızlı aksiyon chip'lerinde ve zorunlu alan
+// kartında ortak kullanılır — başka yere kopyalanmaz.
 const STATUS_META: Record<CaseStatus, {
   icon: ReactNode;
   description: string;
   requirement?: string;
-  ring: string;
-  bg: string;
+  /** Available node — outlined */
+  ringSoft: string;
+  /** Available node — soft background */
+  bgSoft: string;
+  /** Solid current node fill */
+  bgSolid: string;
+  /** Text color for node label / chip */
   text: string;
+  /** Selected pending — strong outline */
   selectedRing: string;
 }> = {
   'Açık': {
-    icon: <Inbox size={18} />,
+    icon: <Inbox size={16} />,
     description: 'Yeni oluşturuldu, atama bekliyor.',
-    ring: 'ring-blue-200',
-    bg: 'bg-blue-50/40',
+    ringSoft: 'ring-blue-200',
+    bgSoft: 'bg-blue-50',
+    bgSolid: 'bg-blue-500',
     text: 'text-blue-700',
     selectedRing: 'ring-blue-500',
   },
   'İncelemede': {
-    icon: <SearchIcon size={18} />,
+    icon: <SearchIcon size={16} />,
     description: 'Aktif olarak işleniyor.',
-    ring: 'ring-amber-200',
-    bg: 'bg-amber-50/40',
+    ringSoft: 'ring-amber-200',
+    bgSoft: 'bg-amber-50',
+    bgSolid: 'bg-amber-500',
     text: 'text-amber-700',
     selectedRing: 'ring-amber-500',
   },
   '3rdPartyBekleniyor': {
-    icon: <PauseCircle size={18} />,
+    icon: <PauseCircle size={16} />,
     description: '3. partiden cevap bekleniyor; SLA durur.',
     requirement: '3. parti seçimi',
-    ring: 'ring-slate-200',
-    bg: 'bg-slate-50/60',
+    ringSoft: 'ring-slate-300',
+    bgSoft: 'bg-slate-50',
+    bgSolid: 'bg-slate-500',
     text: 'text-slate-700',
     selectedRing: 'ring-slate-500',
   },
   'Eskalasyon': {
-    icon: <TrendingUp size={18} />,
+    icon: <TrendingUp size={16} />,
     description: 'Üst yönetime yükseltildi.',
     requirement: 'Seviye + gerekçe',
-    ring: 'ring-rose-200',
-    bg: 'bg-rose-50/40',
+    ringSoft: 'ring-rose-200',
+    bgSoft: 'bg-rose-50',
+    bgSolid: 'bg-rose-500',
     text: 'text-rose-700',
     selectedRing: 'ring-rose-500',
   },
   'Çözüldü': {
-    icon: <CheckCircle2 size={18} />,
+    icon: <CheckCircle2 size={16} />,
     description: 'Sorun çözümlendi.',
     requirement: 'Çözüm notu zorunlu',
-    ring: 'ring-emerald-200',
-    bg: 'bg-emerald-50/40',
+    ringSoft: 'ring-emerald-200',
+    bgSoft: 'bg-emerald-50',
+    bgSolid: 'bg-emerald-500',
     text: 'text-emerald-700',
     selectedRing: 'ring-emerald-500',
   },
   'YenidenAcildi': {
-    icon: <RotateCw size={18} />,
+    icon: <RotateCw size={16} />,
     description: 'Müşteri çözümden memnun değil.',
-    ring: 'ring-violet-200',
-    bg: 'bg-violet-50/40',
+    ringSoft: 'ring-violet-200',
+    bgSoft: 'bg-violet-50',
+    bgSolid: 'bg-violet-500',
     text: 'text-violet-700',
     selectedRing: 'ring-violet-500',
   },
   'İptalEdildi': {
-    icon: <Ban size={18} />,
+    icon: <Ban size={16} />,
     description: 'Talep geri çekildi (terminal).',
     requirement: 'Gerekçe zorunlu',
-    ring: 'ring-slate-200',
-    bg: 'bg-slate-100',
-    text: 'text-slate-600',
+    ringSoft: 'ring-slate-300',
+    bgSoft: 'bg-slate-100',
+    bgSolid: 'bg-slate-600',
+    text: 'text-slate-700',
     selectedRing: 'ring-slate-500',
   },
 };
@@ -262,82 +277,196 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
     }
   }
 
+  const currentMeta = STATUS_META[item.status];
+  const escalationActive = item.escalationLevel && item.escalationLevel !== 'Yok';
+
   return (
     <section className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-      <div className="mb-3 flex items-center justify-between">
+      {/* ── Header ── */}
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">Statü Geçişi</h3>
           <p className="mt-0.5 text-[11px] text-slate-500">
-            Mevcut statüden geçilebilen kartlar aktif. Diğerleri pasiftir.
+            Statü yolculuğunda ileri/geri taşıyabileceğin adımlar aktif. Pasif olanlara şu an geçilemez.
           </p>
         </div>
-        <Badge tint="slate">
-          Şu an: <strong className="ml-1">{STATUS_LABELS[item.status]}</strong>
-        </Badge>
       </div>
 
-      {/* Status kart grid */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7">
-        {CASE_STATUSES.map((status) => {
-          const meta = STATUS_META[status];
-          const isCurrent = status === item.status;
-          const disabled = isCardDisabled(status);
-          const selected = pending === status;
-          return (
-            <button
-              key={status}
-              type="button"
-              onClick={() => selectCard(status)}
-              disabled={disabled}
-              className={`group relative flex flex-col items-start gap-1.5 rounded-lg p-3 text-left ring-1 ring-inset transition ${
-                disabled
-                  ? 'cursor-not-allowed bg-slate-50/40 opacity-50 ring-slate-200'
-                  : `${meta.bg} ${meta.ring} hover:scale-[1.02] hover:shadow-sm`
-              } ${
-                selected
-                  ? `ring-2 ring-offset-1 ${meta.selectedRing} shadow-md`
-                  : ''
-              }`}
-              title={
-                disabled && !isCurrent
-                  ? `${item.status} → ${status} geçişi yok`
-                  : isCurrent
-                    ? 'Şu an bu statüdesin'
-                    : `${status} statüsüne geç`
-              }
-            >
-              <div className="flex w-full items-center justify-between">
-                <span className={`flex h-7 w-7 items-center justify-center rounded-md ${meta.bg} ${meta.text}`}>
-                  {meta.icon}
-                </span>
-                {disabled && !isCurrent && <Lock size={11} className="text-slate-400" />}
-                {isCurrent && (
-                  <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-700">
-                    Şu an
-                  </span>
-                )}
-                {selected && !isCurrent && (
-                  <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
-                    Seçildi
-                  </span>
+      {/* ── 1) Current status summary ── */}
+      <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+        <div className="flex items-center gap-3">
+          <span
+            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white ${currentMeta.bgSolid}`}
+            aria-hidden
+          >
+            {currentMeta.icon}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Şu an
+              </span>
+              <span className={`text-sm font-semibold ${currentMeta.text}`}>
+                {STATUS_LABELS[item.status]}
+              </span>
+              {item.priority === 'Critical' && (
+                <Badge tint="rose" className="text-[10px]">
+                  Critical
+                </Badge>
+              )}
+              {item.slaViolation && (
+                <Badge tint="rose" className="text-[10px]">
+                  SLA ihlali
+                </Badge>
+              )}
+              {escalationActive && (
+                <Badge tint="amber" className="text-[10px]">
+                  Eskalasyon: {ESCALATION_LEVEL_LABELS[item.escalationLevel]}
+                </Badge>
+              )}
+              {item.approvalState === 'Pending' && (
+                <Badge tint="violet" className="text-[10px]">
+                  Onay bekliyor
+                </Badge>
+              )}
+              {item.approvalState === 'Rejected' && (
+                <Badge tint="rose" className="text-[10px]">
+                  Onay reddedildi
+                </Badge>
+              )}
+            </div>
+            <p className="mt-0.5 text-[11.5px] text-slate-600">
+              {currentMeta.description}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2) Status journey (horizontal scroll if cramped) ── */}
+      <div className="-mx-1 mb-3 overflow-x-auto px-1 pb-1">
+        <div className="flex min-w-max items-start gap-1">
+          {CASE_STATUSES.map((status, idx) => {
+            const meta = STATUS_META[status];
+            const isCurrent = status === item.status;
+            const disabled = isCardDisabled(status);
+            const selected = pending === status;
+            const isLast = idx === CASE_STATUSES.length - 1;
+
+            // Node style — current > selected > available > disabled
+            let nodeCls: string;
+            let labelCls: string;
+            if (isCurrent) {
+              nodeCls = `${meta.bgSolid} text-white ring-2 ring-offset-2 ring-offset-white ${meta.selectedRing} shadow-sm`;
+              labelCls = `font-semibold ${meta.text}`;
+            } else if (selected) {
+              nodeCls = `${meta.bgSoft} ${meta.text} ring-2 ring-offset-2 ring-offset-white ${meta.selectedRing} shadow-sm`;
+              labelCls = `font-semibold ${meta.text}`;
+            } else if (!disabled) {
+              nodeCls = `${meta.bgSoft} ${meta.text} ring-1 ring-inset ${meta.ringSoft} hover:scale-[1.04] hover:shadow-sm`;
+              labelCls = `font-medium text-slate-700`;
+            } else {
+              nodeCls = 'bg-slate-50 text-slate-300 ring-1 ring-inset ring-slate-200';
+              labelCls = 'text-slate-400';
+            }
+
+            const tooltip = disabled
+              ? isCurrent
+                ? 'Şu anki statü'
+                : `${STATUS_LABELS[item.status]} → ${STATUS_LABELS[status]} geçişi tanımlı değil`
+              : selected
+                ? `${STATUS_LABELS[status]} seçildi — alttaki formu doldur`
+                : `${STATUS_LABELS[status]} statüsüne geç`;
+
+            return (
+              <div key={status} className="flex items-start">
+                <div className="flex w-[88px] shrink-0 flex-col items-center text-center">
+                  <button
+                    type="button"
+                    onClick={() => selectCard(status)}
+                    disabled={disabled}
+                    title={tooltip}
+                    aria-current={isCurrent ? 'step' : undefined}
+                    className={`relative grid h-11 w-11 place-items-center rounded-full transition ${nodeCls} ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    {disabled && !isCurrent ? (
+                      <Lock size={14} />
+                    ) : (
+                      <span aria-hidden>{meta.icon}</span>
+                    )}
+                  </button>
+                  <div className="mt-1.5 px-0.5 text-[10.5px] leading-tight">
+                    <div className={labelCls}>{STATUS_LABELS[status]}</div>
+                    {isCurrent && (
+                      <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                        Şu an
+                      </div>
+                    )}
+                    {selected && !isCurrent && (
+                      <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-brand-600">
+                        Seçildi
+                      </div>
+                    )}
+                    {!disabled && !isCurrent && !selected && meta.requirement && (
+                      <div className="mt-0.5 truncate text-[9px] text-slate-500">
+                        {meta.requirement}
+                      </div>
+                    )}
+                    {disabled && !isCurrent && (
+                      <div className="mt-0.5 text-[9px] text-slate-400">Geçilemez</div>
+                    )}
+                  </div>
+                </div>
+                {!isLast && (
+                  <span
+                    className="mt-5 flex h-px w-4 shrink-0 items-center bg-slate-200 sm:w-6"
+                    aria-hidden
+                  />
                 )}
               </div>
-              <div className={`text-sm font-semibold ${meta.text}`}>{STATUS_LABELS[status]}</div>
-              <div className="text-[11px] leading-tight text-slate-600">{meta.description}</div>
-              {meta.requirement && !disabled && (
-                <span className="mt-auto rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
-                  ⚠ {meta.requirement}
-                </span>
-              )}
-              {disabled && !isCurrent && (
-                <span className="mt-auto text-[10px] text-slate-400">Geçilemez</span>
-              )}
-            </button>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* Koşullu alanlar */}
+      {/* ── 3) Recommended next actions ── */}
+      {allowedTransitions.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-500">
+            Önerilen aksiyonlar
+          </span>
+          {allowedTransitions.map((target) => {
+            const meta = STATUS_META[target];
+            const selected = pending === target;
+            // Each chip routes through the SAME selectCard handler — no
+            // separate logic, no validation bypass.
+            return (
+              <button
+                key={target}
+                type="button"
+                onClick={() => selectCard(target)}
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11.5px] transition ${
+                  selected
+                    ? `${meta.bgSoft} ${meta.text} border-transparent ring-2 ring-offset-1 ring-offset-white ${meta.selectedRing}`
+                    : `border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:${meta.text}`
+                }`}
+              >
+                <span aria-hidden>{meta.icon}</span>
+                <span>{STATUS_LABELS[target]}'a taşı</span>
+                <ChevronRight size={11} className="opacity-60" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {allowedTransitions.length === 0 && (
+        <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11.5px] text-slate-600">
+          <Lock size={11} className="mr-1 inline align-text-bottom" />
+          Bu statüden başka bir statüye geçilemez (terminal). İşlem yapmak için vakayı yeniden açan
+          bir adım gerekir.
+        </div>
+      )}
+
+      {/* ── 4) Conditional pending-state form — UNCHANGED business logic ── */}
       {pending && (
         <div className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
           <div className="flex items-center gap-2">
