@@ -155,7 +155,11 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
 
   const thirdParties = useMemo(() => lookupService.thirdParties(), []);
 
-  // Vaka değişince akış sıfırlanır
+  // Vaka değişince akış sıfırlanır.
+  // Codex PR-1e review P2 fix — Panel reuse (örn. L1WorkbenchPanel başka
+  // case gönderdiğinde) önceki tenant'ın closure taxonomy cache'i ekrana
+  // sızıp yanlış code/label persist edilebiliyordu. closureTax'i de
+  // sıfırlıyoruz; yeni item için aşağıdaki fetch effect tetiklenir.
   useEffect(() => {
     setPending(null);
     setResolutionNote('');
@@ -168,6 +172,7 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
     setClosureRcd('');
     setClosureRt('');
     setClosurePp('');
+    setClosureTax(null);
   }, [item.id]);
 
   // Smart Ticket → Çözüldü kararı seçildiğinde taxonomy listelerini çek.

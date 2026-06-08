@@ -361,6 +361,55 @@ const groupsWithKids = filteredRows.filter((r) => r.taxonomyType === 'rootCauseG
 if (groupsWithKids > 0) ok(`11) rootCauseGroup filter children döndü (${groupsWithKids} grup)`);
 else bad('11) closure taxonomy filter', 'gruplar children\'sız');
 
+// ─── 12) UI panel reuse regression (Codex PR-1e P2) ─────────────────────
+//
+// StatusTransitionPanel'in item.id reset effect'inin closureTax cache'ini
+// de sıfırladığını doğrular. Inline pure replica — panel logic'i değişirse
+// bu blok da güncellenmeli (manuel sync).
+
+console.log('');
+console.log('── 12) Panel reuse regression (P2 fix) ────────────────');
+
+function itemResetEffect(prev) {
+  return {
+    ...prev,
+    pending: null,
+    resolutionNote: '',
+    cancelReason: '',
+    thirdPartyId: '',
+    escalationLevel: '',
+    escalationReason: '',
+    error: null,
+    closureRcg: '',
+    closureRcd: '',
+    closureRt: '',
+    closurePp: '',
+    closureTax: null,
+  };
+}
+const stale = {
+  pending: 'Çözüldü',
+  resolutionNote: 'önceki vakadan kalmış',
+  closureRcg: 'rcg.permission',
+  closureRcd: 'rcd.menu_permission_missing',
+  closureRt: 'rt.permission_update',
+  closurePp: 'pp.validation_added',
+  closureTax: { rootCauseGroup: [{ code: 'rcg.permission', label: 'Yetki / Rol', children: [] }] },
+};
+const afterSwap = itemResetEffect(stale);
+if (
+  afterSwap.closureTax === null &&
+  afterSwap.closureRcg === '' &&
+  afterSwap.closureRcd === '' &&
+  afterSwap.closureRt === '' &&
+  afterSwap.closurePp === '' &&
+  afterSwap.pending === null
+) {
+  ok('12) panel reuse: item.id değişimi closureTax + closure seçimleri sıfırlar');
+} else {
+  bad('12) panel reuse', JSON.stringify(afterSwap));
+}
+
 // ─── Cleanup ─────────────────────────────────────────────────────────────
 
 if (!KEEP && created.length > 0) {
