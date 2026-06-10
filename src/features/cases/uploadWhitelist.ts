@@ -58,10 +58,16 @@ export const UPLOAD_ALLOWED_EXTENSIONS = [
  * backend `server/lib/uploadWhitelist.js` ile birebir aynı.
  */
 export function isAcceptedUpload(mimeType: string | undefined, fileName: string | undefined): boolean {
-  const mime = typeof mimeType === 'string' ? mimeType.trim().toLowerCase() : '';
+  const mimeRaw = typeof mimeType === 'string' ? mimeType.trim().toLowerCase() : '';
   const name = typeof fileName === 'string' ? fileName.toLowerCase() : '';
   const dotIdx = name.lastIndexOf('.');
   const ext = dotIdx >= 0 ? name.slice(dotIdx) : '';
+
+  // Codex P2 (PR #470 review) — caseService.addFile boş File.type için
+  // 'application/octet-stream' substitute ediyor (Safari/Office xlsx).
+  // octet-stream'i "MIME bilinmiyor" olarak davran → uzantı tek kanal
+  // olarak çalışır. Backend `server/lib/uploadWhitelist.js` ile aynı.
+  const mime = mimeRaw === 'application/octet-stream' ? '' : mimeRaw;
 
   const hasMime = mime.length > 0;
   const hasExt = ext.length > 0;

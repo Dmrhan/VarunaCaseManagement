@@ -206,14 +206,26 @@ if (
 }
 
 // 17) Codex P2 — KB stale promise guard: kbSuggestReqIdRef snapshot
-//     ve case değişimi kontrolü.
+//     + reset effect increment (item.id closure problemi çözüldü).
 if (
   /kbSuggestReqIdRef\s*=\s*useRef\(0\)/.test(src) &&
-  /reqId\s*!==\s*kbSuggestReqIdRef\.current\s*\|\|\s*item\.id\s*!==\s*targetCaseId/.test(src)
+  /reqId\s*!==\s*kbSuggestReqIdRef\.current/.test(src)
 ) {
-  ok('17) Codex P2 — KB stale promise guard (reqId + targetCaseId)');
+  ok('17) Codex P2 — KB stale promise guard reqId snapshot');
 } else {
-  bad('17) Stale guard pattern eksik');
+  bad('17) Stale guard reqId pattern eksik');
+}
+
+// 18) Codex P2 (PR #470 review) — item.id reset effect içinde
+//     kbSuggestReqIdRef.current artırılıyor. Aksi halde in-flight
+//     handleKbSuggest promise'i closure'da yakalanan item.id ile
+//     mismatch yapamıyordu (closure değeri sabit kalıyor).
+if (
+  /useEffect\(\(\)\s*=>\s*\{[\s\S]{0,800}?kbSuggestReqIdRef\.current\s*\+=\s*1[\s\S]{0,200}?\}, \[item\.id\]\)/.test(src)
+) {
+  ok('18) Codex P2 (#470) — reset effect kbSuggestReqIdRef increment (case-switch invalidation)');
+} else {
+  bad('18) Reset effect reqId increment eksik');
 }
 
 console.log('');

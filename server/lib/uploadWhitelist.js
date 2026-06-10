@@ -84,10 +84,20 @@ export const UPLOAD_ALLOWED_EXTENSIONS = [
  *   - İkisi de yok → reject
  */
 export function isAcceptedUpload(mimeType, fileName) {
-  const mime = typeof mimeType === 'string' ? mimeType.trim().toLowerCase() : '';
+  const mimeRaw = typeof mimeType === 'string' ? mimeType.trim().toLowerCase() : '';
   const name = typeof fileName === 'string' ? fileName.toLowerCase() : '';
   const dotIdx = name.lastIndexOf('.');
   const ext = dotIdx >= 0 ? name.slice(dotIdx) : '';
+
+  // Codex P2 (PR #470 review) — caseService.addFile boş File.type için
+  // 'application/octet-stream' substitute ediyor (Safari/Office xlsx
+  // senaryosu). Bu fallback MIME'i listede değil; sıkı `mimeOk && extOk`
+  // kuralı kabul edilebilir .xlsx/.docx uzantılarını da reddediyordu.
+  // Çözüm: octet-stream'i "MIME bilinmiyor" olarak davran → uzantı yine
+  // tek kanal olarak çalışır (Safari xlsx, vb. tolerantlık korunur).
+  // Bu güvenliği azaltmaz çünkü octet-stream zaten generic, content
+  // signal değil.
+  const mime = mimeRaw === 'application/octet-stream' ? '' : mimeRaw;
 
   const hasMime = mime.length > 0;
   const hasExt = ext.length > 0;
