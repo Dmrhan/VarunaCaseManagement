@@ -424,6 +424,63 @@ async function assertPackageProductCompatible({ packageId, productId }) {
   }
 }
 
+/**
+ * PR-2 — Smart Ticket create sırasında creator auto-assign.
+ *
+ * Business review ownership audit — Smart Ticket akışıyla açılan vaka
+ * KPI/raporlara girsin diye yaratan agent'a otomatik atanır. Frontend
+ * payload değişmez; route handler `req.user`'ı geçirir, repo Smart Ticket
+ * koşullarını kontrol edip Case.create transaction'ı içinde
+ * assignedPersonId/Name + assignedTeamId/Name set eder.
+ *
+ * Tetik koşulları (HEPSİ sağlanmalı):
+ *   1. input.customFields.smartTicket mevcut (Smart Ticket akışı)
+ *   2. input.assignedPersonId BOŞ (operatör manuel atamadıysa)
+ *   3. user.personId DOLU (frontline rol — SystemAdmin atlanır)
+ *
+ * Guardrail (cross-tenant koruma):
+ *   - Person lookup teamId + team.companyId döndürür
+ *   - team.companyId === case.companyId → assignedTeamId/Name set
+ *   - team yoksa veya farklı tenant → assignedPersonId/Name set, team null
+ *
+ * Klasik akışlar (NewCaseForm, QuickCaseModal, API direct) → koşul 1
+ * sağlanmaz → auto-assign atlanır (mevcut davranış aynen sürer).
+ *
+ * Ayrı activity satırı yazılmaz; yalnız mevcut "Vaka oluşturuldu" satırı
+ * kalır (içinde actor zaten req.user.fullName — PR-1).
+ */
+async function resolveSmartTicketAutoAssign({ input, m, user }) {
+  if (!input?.customFields?.smartTicket) return null;
+  if (m.assignedPersonId) return null;
+  if (!user?.personId) return null;
+
+  const person = await prisma.person.findUnique({
+    where: { id: user.personId },
+    select: {
+      id: true,
+      name: true,
+      teamId: true,
+      supportLevel: true,
+      team: { select: { id: true, name: true, companyId: true } },
+    },
+  });
+  if (!person) return null;
+
+  const result = {
+    personId: person.id,
+    personName: person.name,
+    teamId: null,
+    teamName: null,
+  };
+
+  // Cross-tenant guardrail: yalnız team Case'in şirketinde ise team set.
+  if (person.team && person.team.companyId === m.companyId) {
+    result.teamId = person.team.id;
+    result.teamName = person.team.name;
+  }
+  return result;
+}
+
 function sanitizeRequesterContext(raw) {
   const out = {
     customerContactName: trimOrNull(raw.customerContactName, 120),
@@ -914,11 +971,31 @@ export const caseRepository = {
     return shape(c);
   },
 
-  async create(input) {
+  async create(input, { user } = {}) {
     // input: NewCaseInput shape (caseService.ts §142)
+    // user (opsiyonel): { id, fullName, personId, ... } — PR-2 Smart Ticket
+    // auto-assign için route handler tarafından geçirilir. Geriye uyumlu:
+    // klasik çağrılar (NewCaseForm + QuickCaseModal + smoke scriptleri)
+    // user geçirmese de aynen çalışır.
     const caseNumber = `VK-${Date.now().toString(36).toUpperCase()}`;
     // TR string enum'larını ASCII identifier'a çevir
     const m = toDb(input);
+
+    // PR-2 — Smart Ticket creator auto-assign.
+    // Tetik koşulları + cross-tenant koruma resolveSmartTicketAutoAssign
+    // içinde. Tetik sağlanmazsa null döner ve m sahipsiz akış zaten devam
+    // eder. Auto-assign m.assignedPersonId/Name + (opsiyonel) team set
+    // eder; sonraki resolvedSupportLevel cascade ve prisma.case.create
+    // bunu otomatik kullanır.
+    const autoAssign = await resolveSmartTicketAutoAssign({ input, m, user });
+    if (autoAssign) {
+      m.assignedPersonId = autoAssign.personId;
+      m.assignedPersonName = autoAssign.personName;
+      if (autoAssign.teamId) {
+        m.assignedTeamId = autoAssign.teamId;
+        m.assignedTeamName = autoAssign.teamName;
+      }
+    }
 
     // Phase D — Müşterisiz vaka akışı:
     //   - CompanySettings.requireCustomerOnCaseCreate=true ise accountId zorunlu
