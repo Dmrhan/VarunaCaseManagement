@@ -169,6 +169,13 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
 
   const thirdParties = useMemo(() => lookupService.thirdParties(), []);
 
+  // Codex P2 (PR #470 review) — KB stale guard ref'leri effect'ten ÖNCE
+  // tanımlı. item.id değişiminde reqId artırılır → in-flight handleKbSuggest
+  // promise'i mismatch ile düşer. Eski impl yalnız `item.id !== targetCaseId`
+  // kontrolünü yapıyordu ama closure'da yakalanan `item` değişmediği için
+  // mismatch hiç oluşmuyordu. ReqId increment ile gerçek stale guard.
+  const kbSuggestReqIdRef = useRef(0);
+
   // Vaka değişince akış sıfırlanır.
   // Codex PR-1e review P2 fix — Panel reuse (örn. L1WorkbenchPanel başka
   // case gönderdiğinde) önceki tenant'ın closure taxonomy cache'i ekrana
@@ -190,6 +197,9 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
     setKbSuggesting(false);
     setKbSuggestion(null);
     setKbSuggestionError(null);
+    // KB request id'sini bumple — in-flight handleKbSuggest promise'i
+    // bu mismatch sayesinde response'unu yazmaz.
+    kbSuggestReqIdRef.current += 1;
   }, [item.id]);
 
   // Smart Ticket → Çözüldü kararı seçildiğinde taxonomy listelerini çek.
@@ -255,12 +265,12 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
    * Approval / checklist / ResolutionApprovalPolicy guard'ları bypass
    * edilmez — bu yalnız öneri katmanı, kapanış akışına dokunmaz.
    */
-  // Codex P2 (PR #469 review) — Stale promise guard. Panel L1Workbench
-  // gibi yerlerde reuse oluyor; kullanıcı KB önerisi istediği sırada
-  // başka vakaya geçerse eski response yeni case'e pre-fill / display
-  // yapıyordu. reqId + caseId snapshot guard ile geç gelen response'u
-  // atlatıyoruz.
-  const kbSuggestReqIdRef = useRef(0);
+  // Codex P2 (PR #469 + #470 review) — Stale promise guard. Panel
+  // L1Workbench gibi yerlerde reuse oluyor; kullanıcı KB önerisi istediği
+  // sırada başka vakaya geçerse eski response yeni case'e pre-fill /
+  // display yapıyordu. reqId snapshot guard + item.id reset effect'inde
+  // ref increment ile geç gelen response'u atlatıyoruz.
+  // (kbSuggestReqIdRef tanımı reset effect'inden ÖNCE yukarıda yapıldı.)
 
   async function handleKbSuggest() {
     if (kbSuggesting) return;
