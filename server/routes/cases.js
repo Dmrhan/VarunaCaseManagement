@@ -282,7 +282,11 @@ router.post(
     // kullanılır. Eskiden body.createdBy yoksa repo 'Mock User' string'ine
     // düşüyordu — audit yanlış sahiplendiriyordu.
     body.createdBy = req.user.fullName || body.createdBy;
-    const created = await caseRepository.create(body);
+    // PR-2 — req.user context'i Smart Ticket auto-assign için repo'ya geçir.
+    // Klasik akışlar etkilenmez (auto-assign yalnız customFields.smartTicket
+    // varsa tetiklenir; resolveSmartTicketAutoAssign tüm koşulları kontrol
+    // eder).
+    const created = await caseRepository.create(body, { user: req.user });
     res.status(201).json(created);
   }),
 );
