@@ -169,12 +169,30 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
 
   const thirdParties = useMemo(() => lookupService.thirdParties(), []);
 
-  // Codex P2 (PR #470 review) — KB stale guard ref'leri effect'ten ÖNCE
-  // tanımlı. item.id değişiminde reqId artırılır → in-flight handleKbSuggest
-  // promise'i mismatch ile düşer. Eski impl yalnız `item.id !== targetCaseId`
-  // kontrolünü yapıyordu ama closure'da yakalanan `item` değişmediği için
-  // mismatch hiç oluşmuyordu. ReqId increment ile gerçek stale guard.
+  // Codex P2 (PR #470 + #472 review) — KB stale guard.
+  //
+  // Senaryo: kullanıcı KB önerisi istiyor; in-flight'tayken başka case'e
+  // geçiyor. Eski response yeni case'e pre-fill yazmasın diye iki
+  // katmanlı koruma:
+  //
+  //   1) kbSuggestReqIdRef: her handleKbSuggest çağrısı kendi token'ını
+  //      snapshot eder; response yazımı öncesi current ref ile
+  //      karşılaştırır.
+  //   2) currentCaseIdRef: parent item.id değişimini SYNCHRONOUSLY
+  //      yakalar (render body'de derived state pattern'i). Promise
+  //      microtask'leri passive useEffect'ten ÖNCE çalışabildiği için
+  //      useEffect tabanlı invalidation race condition'a açıktı —
+  //      microtask sırasında ref hala eski case'in id'sini içerebilir.
+  //      Render body update ise commit'ten önce çalışır, herhangi bir
+  //      microtask'ten önce.
   const kbSuggestReqIdRef = useRef(0);
+  const currentCaseIdRef = useRef(item.id);
+  if (currentCaseIdRef.current !== item.id) {
+    // Render body — synchronously update; useEffect commit'ten önce
+    // çalışır, microtask race'i kapatır.
+    currentCaseIdRef.current = item.id;
+    kbSuggestReqIdRef.current += 1;
+  }
 
   // Vaka değişince akış sıfırlanır.
   // Codex PR-1e review P2 fix — Panel reuse (örn. L1WorkbenchPanel başka
@@ -197,9 +215,9 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
     setKbSuggesting(false);
     setKbSuggestion(null);
     setKbSuggestionError(null);
-    // KB request id'sini bumple — in-flight handleKbSuggest promise'i
-    // bu mismatch sayesinde response'unu yazmaz.
-    kbSuggestReqIdRef.current += 1;
+    // NOT: kbSuggestReqIdRef bump'ı render body'de SYNCHRONOUSLY yapılır
+    // (yukarıda); useEffect microtask race'ine açık olduğu için burada
+    // tekrarlanmaz.
   }, [item.id]);
 
   // Smart Ticket → Çözüldü kararı seçildiğinde taxonomy listelerini çek.
@@ -291,8 +309,14 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
             description: item.description,
             resolution: resolutionNote.trim(),
           });
-      // Stale response guard — case değişti veya yeni request başlatıldı.
-      if (reqId !== kbSuggestReqIdRef.current || item.id !== targetCaseId) {
+      // Stale response guard — reqId mismatch veya case-id mismatch.
+      // currentCaseIdRef render body'de synchronously güncellenir;
+      // closure-bound `item.id` parent re-render'da değişmediği için
+      // bu ref doğru "şu an ekrandaki case" değerini taşır.
+      if (
+        reqId !== kbSuggestReqIdRef.current ||
+        currentCaseIdRef.current !== targetCaseId
+      ) {
         return;
       }
       if (!res) {
@@ -319,7 +343,10 @@ export function StatusTransitionPanel({ item, onApplied }: StatusTransitionPanel
         if (s.permanentPrevention && !closurePp) setClosurePp(s.permanentPrevention.code);
       }
     } catch (e) {
-      if (reqId === kbSuggestReqIdRef.current && item.id === targetCaseId) {
+      if (
+        reqId === kbSuggestReqIdRef.current &&
+        currentCaseIdRef.current === targetCaseId
+      ) {
         setKbSuggestionError((e as Error)?.message ?? 'Öneri alınamadı.');
       }
     } finally {
