@@ -128,6 +128,35 @@ if (
   bad('4c) Boş MIME + kabul uzantı reddediliyor (tolerantlık kayboldu)');
 }
 
+// 4d) Codex P2 (PR #470 review) — application/octet-stream substitute
+//     (caseService.addFile boş File.type için bunu gönderir).
+//     octet-stream'i "MIME yok" gibi davranıp uzantı yolu çalışmalı.
+//     Aksi halde Safari/Office xlsx upload'ı kırılırdı.
+const octetCases = [
+  ['application/octet-stream', 'sheet.xlsx'],
+  ['application/octet-stream', 'doc.docx'],
+  ['application/octet-stream', 'report.pdf'],
+  ['application/octet-stream', 'image.png'],
+];
+const allOctetOk = octetCases.every(([m, n]) => srvIsAccepted(m, n));
+if (allOctetOk) {
+  ok('4d) octet-stream substitute + kabul uzantı kabul (Safari/Office xlsx fix)');
+} else {
+  const reject = octetCases.filter(([m, n]) => !srvIsAccepted(m, n));
+  bad('4d) octet-stream bypass çalışmıyor', reject.map(([, n]) => n).join(' '));
+}
+
+// 4e) octet-stream + dangerous uzantı reddedilmeli (octet-stream "yok"
+//     anlamına gelse de uzantı yolu sıkı).
+if (
+  !srvIsAccepted('application/octet-stream', 'malware.exe') &&
+  !srvIsAccepted('application/octet-stream', 'shell.sh')
+) {
+  ok('4e) octet-stream + dangerous uzantı reddedilir (sıkı uzantı kuralı)');
+} else {
+  bad('4e) octet-stream + dangerous uzantı kabul edildi (yanlış)');
+}
+
 // 5) Boş mime + bilinmeyen uzantı reddedilir.
 if (!srvIsAccepted('', 'unknown.xyz') && !srvIsAccepted(undefined, 'noext')) {
   ok('5) Boş/bilinmeyen mime + uzantı reddedilir (deny-by-default)');

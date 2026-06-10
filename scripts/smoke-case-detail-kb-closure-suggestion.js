@@ -206,14 +206,35 @@ if (
 }
 
 // 17) Codex P2 — KB stale promise guard: kbSuggestReqIdRef snapshot
-//     ve case değişimi kontrolü.
+//     + currentCaseIdRef (synchronous case-id tracking).
 if (
   /kbSuggestReqIdRef\s*=\s*useRef\(0\)/.test(src) &&
-  /reqId\s*!==\s*kbSuggestReqIdRef\.current\s*\|\|\s*item\.id\s*!==\s*targetCaseId/.test(src)
+  /currentCaseIdRef\s*=\s*useRef\(item\.id\)/.test(src) &&
+  /reqId\s*!==\s*kbSuggestReqIdRef\.current\s*\|\|\s*currentCaseIdRef\.current\s*!==\s*targetCaseId/.test(src)
 ) {
-  ok('17) Codex P2 — KB stale promise guard (reqId + targetCaseId)');
+  ok('17) Codex P2 — KB stale guard (reqId + currentCaseIdRef)');
 } else {
   bad('17) Stale guard pattern eksik');
+}
+
+// 18) Codex P2 (PR #472 review) — Synchronous render-body invalidation.
+//     useEffect microtask race'inde geç kalıyordu. Render body içinde
+//     ref karşılaştır + bump pattern'i, commit'ten önce çalışır.
+if (
+  /if\s*\(currentCaseIdRef\.current\s*!==\s*item\.id\)\s*\{[\s\S]{0,400}?currentCaseIdRef\.current\s*=\s*item\.id[\s\S]{0,200}?kbSuggestReqIdRef\.current\s*\+=\s*1/.test(src)
+) {
+  ok('18) Codex P2 (#472) — Synchronous render-body ref update + reqId bump');
+} else {
+  bad('18) Render-body sync update pattern eksik');
+}
+
+// 19) useEffect içinde reqId bump tekrarlanmıyor (microtask race'e
+//     açıktı, render body'ye taşındı).
+const resetEffectMatch = src.match(/useEffect\(\(\)\s*=>\s*\{[\s\S]+?\}, \[item\.id\]\)/);
+if (resetEffectMatch && !/kbSuggestReqIdRef\.current\s*\+=\s*1/.test(resetEffectMatch[0])) {
+  ok('19) Reset effect içinde reqId bump kaldırıldı (sadece state reset)');
+} else {
+  bad('19) Reset effect hala reqId bump içeriyor');
 }
 
 console.log('');

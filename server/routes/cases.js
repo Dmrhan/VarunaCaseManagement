@@ -275,7 +275,18 @@ router.post(
     if (body.companyId && !req.user.allowedCompanyIds.includes(body.companyId)) {
       return res.status(403).json({ error: 'forbidden', message: 'Bu şirkette vaka oluşturma yetkin yok.' });
     }
-    const created = await caseRepository.create(body);
+    // PR-1 — Mock User actor fallback fix (Business review ownership audit).
+    // createdBy SERVER-AUTHORITATIVE: req.user.fullName her zaman önceliklidir.
+    // Client spoof ile farklı isim audit'e yazılamaz; body.createdBy yalnız
+    // req.user.fullName yoksa (legacy/missing fullName) fallback olarak
+    // kullanılır. Eskiden body.createdBy yoksa repo 'Mock User' string'ine
+    // düşüyordu — audit yanlış sahiplendiriyordu.
+    body.createdBy = req.user.fullName || body.createdBy;
+    // PR-2 — req.user context'i Smart Ticket auto-assign için repo'ya geçir.
+    // Klasik akışlar etkilenmez (auto-assign yalnız customFields.smartTicket
+    // varsa tetiklenir; resolveSmartTicketAutoAssign tüm koşulları kontrol
+    // eder).
+    const created = await caseRepository.create(body, { user: req.user });
     res.status(201).json(created);
   }),
 );
@@ -1066,13 +1077,18 @@ router.post(
 /**
  * Adım 2 — POST /api/cases/:id/files/finalize
  * Body: { attachmentId, path, fileName, fileSize, mimeType, uploadedBy? }
+ *
+ * PR-1 — uploadedBy SERVER-AUTHORITATIVE: req.user.fullName her zaman
+ * önceliklidir. Client spoof ile farklı isim audit'e yazılamaz.
  */
 router.post(
   '/:id/files/finalize',
   asyncRoute(async (req, res) => {
+    const body = req.body ?? {};
+    body.uploadedBy = req.user.fullName || body.uploadedBy;
     const result = await caseRepository.finalizeUpload(
       req.params.id,
-      req.body ?? {},
+      body,
       req.user.allowedCompanyIds,
     );
     if (!result) return res.status(404).json({ error: 'Vaka bulunamadı' });
