@@ -159,7 +159,7 @@ console.log('── 2) Smart Ticket case + user → auto-assign ─────�
 try {
   const c = await caseRepository.create(
     baseInput({ customFields: { smartTicket: { platform: 'plat.x' } } }),
-    { user: { personId: agentPerson.id, fullName: 'Test Agent' } },
+    { user: { personId: agentPerson.id, fullName: 'Test Agent', role: 'Agent' } },
   );
   created.push(c.id);
   const row = await prisma.case.findUnique({
@@ -185,7 +185,7 @@ console.log('── 3) Klasik case → auto-assign skip ────────
 try {
   const c = await caseRepository.create(
     baseInput(), // customFields yok
-    { user: { personId: agentPerson.id, fullName: 'Test Agent' } },
+    { user: { personId: agentPerson.id, fullName: 'Test Agent', role: 'Agent' } },
   );
   created.push(c.id);
   const row = await prisma.case.findUnique({
@@ -212,7 +212,7 @@ try {
       assignedPersonId: teamlessPerson?.id ?? agentPerson.id,
       assignedPersonName: teamlessPerson?.name ?? agentPerson.name,
     }),
-    { user: { personId: agentPerson.id, fullName: 'Test Agent' } },
+    { user: { personId: agentPerson.id, fullName: 'Test Agent', role: 'Agent' } },
   );
   created.push(c.id);
   const expectedPid = teamlessPerson?.id ?? agentPerson.id;
@@ -236,7 +236,7 @@ console.log('── 5) Smart Ticket + user.personId null → skip ────�
 try {
   const c = await caseRepository.create(
     baseInput({ customFields: { smartTicket: { platform: 'plat.x' } } }),
-    { user: { personId: null, fullName: 'System Admin' } },
+    { user: { personId: null, fullName: 'System Admin', role: 'SystemAdmin' } },
   );
   created.push(c.id);
   const row = await prisma.case.findUnique({
@@ -252,6 +252,91 @@ try {
   bad('5) exception', err?.message ?? String(err));
 }
 
+// ─── 5b) Codex P2 (PR #475) — SystemAdmin role + personId DOLU → skip ─
+
+console.log('');
+console.log('── 5b) SystemAdmin role + personId DOLU → skip ───────');
+try {
+  const c = await caseRepository.create(
+    baseInput({ customFields: { smartTicket: { platform: 'plat.x' } } }),
+    {
+      user: {
+        personId: agentPerson.id, // demo seed senaryosu: SystemAdmin'in personId'si var
+        fullName: 'System Admin',
+        role: 'SystemAdmin',
+      },
+    },
+  );
+  created.push(c.id);
+  const row = await prisma.case.findUnique({
+    where: { id: c.id },
+    select: { assignedPersonId: true, assignedTeamId: true },
+  });
+  if (row?.assignedPersonId == null && row?.assignedTeamId == null) {
+    ok('5b) Codex P2 — SystemAdmin (role) personId dolu olsa bile auto-assign skip');
+  } else {
+    bad('5b) SystemAdmin role gate ihlali', JSON.stringify(row));
+  }
+} catch (err) {
+  bad('5b) exception', err?.message ?? String(err));
+}
+
+// 5c) Frontline rol seti dışı (Admin) → skip
+console.log('');
+console.log('── 5c) Admin role + personId DOLU → skip ─────────────');
+try {
+  const c = await caseRepository.create(
+    baseInput({ customFields: { smartTicket: { platform: 'plat.x' } } }),
+    {
+      user: {
+        personId: agentPerson.id,
+        fullName: 'Admin User',
+        role: 'Admin',
+      },
+    },
+  );
+  created.push(c.id);
+  const row = await prisma.case.findUnique({
+    where: { id: c.id },
+    select: { assignedPersonId: true, assignedTeamId: true },
+  });
+  if (row?.assignedPersonId == null && row?.assignedTeamId == null) {
+    ok('5c) Admin role auto-assign skip (frontline whitelist)');
+  } else {
+    bad('5c) Admin role gate ihlali', JSON.stringify(row));
+  }
+} catch (err) {
+  bad('5c) exception', err?.message ?? String(err));
+}
+
+// 5d) user.role undefined → skip (defansif)
+console.log('');
+console.log('── 5d) user.role undefined → skip ────────────────────');
+try {
+  const c = await caseRepository.create(
+    baseInput({ customFields: { smartTicket: { platform: 'plat.x' } } }),
+    {
+      user: {
+        personId: agentPerson.id,
+        fullName: 'No-Role User',
+        // role explicit undefined
+      },
+    },
+  );
+  created.push(c.id);
+  const row = await prisma.case.findUnique({
+    where: { id: c.id },
+    select: { assignedPersonId: true, assignedTeamId: true },
+  });
+  if (row?.assignedPersonId == null && row?.assignedTeamId == null) {
+    ok('5d) user.role undefined → auto-assign skip (defansif whitelist)');
+  } else {
+    bad('5d) Role undefined gate ihlali', JSON.stringify(row));
+  }
+} catch (err) {
+  bad('5d) exception', err?.message ?? String(err));
+}
+
 // ─── 6) Cross-tenant team guard ────────────────────────────────────
 
 console.log('');
@@ -262,7 +347,7 @@ if (!crossTenantPerson || !crossTenantPerson.team) {
   try {
     const c = await caseRepository.create(
       baseInput({ customFields: { smartTicket: { platform: 'plat.x' } } }),
-      { user: { personId: crossTenantPerson.id, fullName: 'CrossTenant Agent' } },
+      { user: { personId: crossTenantPerson.id, fullName: 'CrossTenant Agent', role: 'Agent' } },
     );
     created.push(c.id);
     const row = await prisma.case.findUnique({
@@ -289,7 +374,7 @@ if (!teamlessPerson) {
   try {
     const c = await caseRepository.create(
       baseInput({ customFields: { smartTicket: { platform: 'plat.x' } } }),
-      { user: { personId: teamlessPerson.id, fullName: 'Teamless Agent' } },
+      { user: { personId: teamlessPerson.id, fullName: 'Teamless Agent', role: 'Agent' } },
     );
     created.push(c.id);
     const row = await prisma.case.findUnique({

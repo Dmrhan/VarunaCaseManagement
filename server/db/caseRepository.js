@@ -436,7 +436,14 @@ async function assertPackageProductCompatible({ packageId, productId }) {
  * Tetik koşulları (HEPSİ sağlanmalı):
  *   1. input.customFields.smartTicket mevcut (Smart Ticket akışı)
  *   2. input.assignedPersonId BOŞ (operatör manuel atamadıysa)
- *   3. user.personId DOLU (frontline rol — SystemAdmin atlanır)
+ *   3. user.role FRONTLINE rol setinde (Agent / Backoffice / CSM /
+ *      Supervisor) — Admin / SystemAdmin atlanır
+ *   4. user.personId DOLU (Person FK bağlı)
+ *
+ * Codex P2 (PR #475 review) — eski impl yalnız personId kontrol
+ * ediyordu; demo seed SystemAdmin'e personId atadığı için SystemAdmin
+ * Smart Ticket akışını kullansa kendisine assign oluyordu. Role-based
+ * whitelist gate ile yönetim rolleri açıkça hariç tutuldu.
  *
  * Guardrail (cross-tenant koruma):
  *   - Person lookup teamId + team.companyId döndürür
@@ -449,10 +456,18 @@ async function assertPackageProductCompatible({ packageId, productId }) {
  * Ayrı activity satırı yazılmaz; yalnız mevcut "Vaka oluşturuldu" satırı
  * kalır (içinde actor zaten req.user.fullName — PR-1).
  */
+const SMART_TICKET_AUTO_ASSIGN_FRONTLINE_ROLES = new Set([
+  'Agent',
+  'Backoffice',
+  'CSM',
+  'Supervisor',
+]);
+
 async function resolveSmartTicketAutoAssign({ input, m, user }) {
   if (!input?.customFields?.smartTicket) return null;
   if (m.assignedPersonId) return null;
   if (!user?.personId) return null;
+  if (!SMART_TICKET_AUTO_ASSIGN_FRONTLINE_ROLES.has(user.role)) return null;
 
   const person = await prisma.person.findUnique({
     where: { id: user.personId },
