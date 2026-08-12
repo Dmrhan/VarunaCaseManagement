@@ -1,8 +1,6 @@
 name: Notification Cleanup Cron
 
 on:
-  schedule:
-    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
