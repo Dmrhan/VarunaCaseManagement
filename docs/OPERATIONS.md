@@ -318,7 +318,15 @@ POST /api/cases/cron/snooze-wakeup
 POST /api/cron/pattern-detect
 POST /api/cron/qa-score-batch
 POST /api/cron/qa-score
+POST /api/cron/notification-cleanup
+POST /api/cron/actionitem-archive
 ```
+
+Eski Vercel deployment'i kapatildigi icin repo icindeki cron workflow'larda
+`schedule` tetikleri devre disidir. `.github/workflows/*cron*.yml`
+dosyalari yalnizca `workflow_dispatch` ile manuel calisir. On-prem ortamda
+bu islerin otomatik calismasi gerekiyorsa, kurum ici scheduler ayni
+endpointleri `CRON_SECRET` header'i ile cagirmalidir.
 
 ### Snooze Wakeup
 
@@ -327,6 +335,8 @@ POST /api/cases/cron/snooze-wakeup
 ```
 
 Zamani gelen snooze kayitlarini uyandirir. Tarihsel sebeple `/api/cases` router'i altinda durur.
+GitHub Actions schedule kapali; manuel workflow adi: "Snooze Wakeup Cron".
+On-prem scheduler icin onceki hedef cadence: her 5 dakika.
 
 ### Pattern Detect
 
@@ -335,6 +345,8 @@ POST /api/cron/pattern-detect
 ```
 
 Son donem vaka yogunlugundan `PatternAlert` kayitlari uretir.
+GitHub Actions schedule kapali; manuel workflow adi: "Pattern Detect Cron".
+On-prem scheduler icin onceki hedef cadence: her 15 dakika.
 
 ### QA Score Batch
 
@@ -343,6 +355,8 @@ POST /api/cron/qa-score-batch
 ```
 
 Kapanmis vakalar icin batch QA scoring calistirir.
+GitHub Actions schedule kapali; manuel workflow adi: "QA Score Batch".
+On-prem scheduler icin onceki hedef cadence: gunluk 02:00 UTC.
 
 ### Tek Vaka QA Score
 
@@ -375,13 +389,12 @@ Response:
 { "ok": true, "deleted": 42, "cutoff": "2026-04-12T00:00:00.000Z" }
 ```
 
-Periyot: **gunluk 03:00 UTC** — `.github/workflows/notification-cleanup.yml`
-GitHub Actions workflow'u tarafindan tetiklenir (qa-score-batch 02:00
-UTC'den sonra calisir, snooze-wakeup */5dk ile cakismaz). Manuel
-tetiklemek icin: GitHub Actions UI → "Notification Cleanup Cron"
-workflow → "Run workflow" (workflow_dispatch). Auth pattern: ayni
-`x-uptime-secret: ${{ secrets.CRON_SECRET }}` header'i (digger 3 cron
-workflow'uyla ayni).
+GitHub Actions schedule kapali; `.github/workflows/notification-cleanup.yml`
+yalnizca manuel `workflow_dispatch` ile calisir. Manuel tetiklemek icin:
+GitHub Actions UI -> "Notification Cleanup Cron" workflow -> "Run workflow".
+On-prem scheduler icin onceki hedef cadence: gunluk 03:00 UTC
+(qa-score-batch 02:00 UTC'den sonra). Auth pattern: diger cron'larla ayni
+`x-uptime-secret: ${{ secrets.CRON_SECRET }}` header'i.
 
 ### ActionItem Archive
 
@@ -403,10 +416,10 @@ Response:
 { "ok": true, "archived": 17, "cutoff": "2026-04-28T03:20:00.000Z" }
 ```
 
-Periyot: **gunluk 03:20 UTC** — `.github/workflows/actionitem-archive.yml`
-GitHub Actions workflow'u tarafindan tetiklenir (notification-cleanup
-03:00 UTC'den sonra). `workflow_dispatch` ile manuel tetik mevcut.
-Auth pattern: digger cron'larla ayni `x-uptime-secret`.
+GitHub Actions schedule kapali; `.github/workflows/actionitem-archive.yml`
+yalnizca manuel `workflow_dispatch` ile calisir. On-prem scheduler icin
+onceki hedef cadence: gunluk 03:20 UTC (notification-cleanup 03:00 UTC'den
+sonra). Auth pattern: diger cron'larla ayni `x-uptime-secret`.
 
 ## Cron Testleri
 

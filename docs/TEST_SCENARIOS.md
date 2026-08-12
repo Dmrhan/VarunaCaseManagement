@@ -288,7 +288,7 @@ Aşağıdakiler şu an **uygulanmamış** veya **kısmi**; bu senaryolarda test 
 - **E-posta bildirimi**: Hiçbir notification e-posta göndermez. `channel='InApp'` only. (Faz 2 §6 kapsamında planlandı.)
 - ~~**Watcher Inbox UI**~~: **Eklendi** (Phase 5c). Sidebar > Çalışma Alanım > İzleyici Inbox; izlenen vakalar + son bildirimler tek sayfada, statü/zaman filtreleri ile.
 - ~~**CasesList link count indicator**~~: **Eklendi** (Phase 5b). Başlık yanında violet `🔗 N` chip görünür.
-- ~~**CaseNotification cleanup**~~: **Eklendi** (Phase 5a). `POST /api/cron/notification-cleanup` 30g+ okunmuş satırları siler. GitHub Actions workflow `.github/workflows/notification-cleanup.yml` günlük 03:00 UTC'de tetikler; `workflow_dispatch` ile manuel tetik de mevcut.
+- ~~**CaseNotification cleanup**~~: **Eklendi** (Phase 5a). `POST /api/cron/notification-cleanup` 30g+ okunmuş satırları siler. Eski Vercel cron GitHub Actions schedule'ı kapalıdır; `.github/workflows/notification-cleanup.yml` yalnızca manuel `workflow_dispatch` ile çalışır. On-prem otomasyon kurulacaksa günlük 03:00 UTC cadence'i kurum içi scheduler'a taşınmalıdır.
 - **Eski notlara reaksiyon bildirimi**: PR #68 öncesi yazılmış notlar `authorId` taşımıyor; reaksiyon eklenirse bildirim üretilmez (sessiz fallback). Yeni notlar test edin.
 - **OpenAI rate-limit (429)**: Gerçek trafikte test edilemez; kod yolu statik review ile kabul edildi.
 - **Mobile responsive**: Telefon emülasyonuyla genel akış test edilebilir ama "mobile-first" tasarım hedefi değil.
